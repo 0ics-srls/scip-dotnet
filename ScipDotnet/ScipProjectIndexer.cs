@@ -118,9 +118,11 @@ public class ScipProjectIndexer
         }
 
 
-        options.Logger.LogDebug($"Found {projects.Count()} projects");
+        var totalProjects = projects.Count;
+        options.Logger.LogInformation("Loaded {Count} projects from {Root}", totalProjects, rootProject.Name);
         var projectsPerProjFile = projects.GroupBy(x => x.FilePath);
         var framework = $"net{Environment.Version.Major}.0";
+        var projectIndex = 0;
         foreach (var projectGroup in projectsPerProjFile)
         {
 
@@ -143,23 +145,26 @@ public class ScipProjectIndexer
             }
 
             indexedProjects.Add(project.Id);
+            projectIndex++;
 
             var globals = new Dictionary<ISymbol, ScipSymbol>(SymbolEqualityComparer.Default);
+            var docCount = project.Documents.Count();
 
-            options.Logger.LogDebug($"Found {project.Documents.Count()} documents in {projectGroup.Key}");
+            options.Logger.LogInformation("[{Index}/{Total}] Indexing {ProjectName} ({DocCount} documents)",
+                projectIndex, totalProjects, project.Name, docCount);
+
+            var indexed = 0;
             foreach (var document in project.Documents)
             {
                 if (options.Matcher.Match(options.WorkingDirectory.FullName, document.FilePath).HasMatches)
                 {
                     yield return await IndexDocument(document, options, globals, project.Language);
-                }
-                else
-                {
-                    options.Logger.LogDebug(
-                        "Excluded file path '{FilePath}' because it did not match the provided --include and --exclude arguments",
-                        document.FilePath);
+                    indexed++;
                 }
             }
+
+            options.Logger.LogInformation("[{Index}/{Total}] {ProjectName}: {Indexed} documents indexed",
+                projectIndex, totalProjects, project.Name, indexed);
         }
     }
 

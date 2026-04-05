@@ -164,17 +164,33 @@ public class ScipProjectIndexer
                 projectIndex, totalProjects, project.Name, docCount);
 
             var indexed = 0;
+            var skipped = 0;
             foreach (var document in project.Documents)
             {
-                if (options.Matcher.Match(options.WorkingDirectory.FullName, document.FilePath).HasMatches)
+                if (!options.Matcher.Match(options.WorkingDirectory.FullName, document.FilePath).HasMatches)
+                    continue;
+
+                Scip.Document? result = null;
+                try
                 {
-                    yield return await IndexDocument(document, options, globals, project.Language);
+                    result = await IndexDocument(document, options, globals, project.Language);
+                }
+                catch (Exception ex)
+                {
+                    skipped++;
+                    Logger.LogWarning("Skipped document {FilePath}: {Message}", document.FilePath, ex.Message);
+                }
+
+                if (result != null)
+                {
+                    yield return result;
                     indexed++;
                 }
             }
 
-            options.Logger.LogInformation("[{Index}/{Total}] {ProjectName}: {Indexed} documents indexed",
-                projectIndex, totalProjects, project.Name, indexed);
+            options.Logger.LogInformation("[{Index}/{Total}] {ProjectName}: {Indexed} documents indexed{Skipped}",
+                projectIndex, totalProjects, project.Name, indexed,
+                skipped > 0 ? $", {skipped} skipped" : "");
         }
     }
 

@@ -81,15 +81,23 @@ public class ScipProjectIndexer
             projects = new List<Project>();
             var slnxDir = rootProject.DirectoryName!;
             var doc = System.Xml.Linq.XDocument.Load(rootProject.FullName);
-            var projectPaths = doc.Descendants("Project")
+            var projectPathsList = doc.Descendants("Project")
                 .Select(e => e.Attribute("Path")?.Value)
                 .Where(p => p != null)
-                .Select(p => Path.GetFullPath(Path.Combine(slnxDir, p!)));
-            foreach (var projectPath in projectPaths)
+                .Select(p => Path.GetFullPath(Path.Combine(slnxDir, p!)))
+                .ToList();
+            var totalSlnxProjects = projectPathsList.Count;
+            options.Logger.LogInformation("Opening {Count} projects from {Slnx}...", totalSlnxProjects, rootProject.Name);
+
+            var openIndex = 0;
+            foreach (var projectPath in projectPathsList)
             {
+                openIndex++;
+                var projName = Path.GetFileNameWithoutExtension(projectPath);
+
                 if (!File.Exists(projectPath))
                 {
-                    Logger.LogWarning("Project not found: {ProjectPath}", projectPath);
+                    Logger.LogWarning("[{Index}/{Total}] Project not found: {ProjectPath}", openIndex, totalSlnxProjects, projectPath);
                     continue;
                 }
 
@@ -98,17 +106,19 @@ public class ScipProjectIndexer
                     .FirstOrDefault(p => string.Equals(p.FilePath, projectPath, StringComparison.OrdinalIgnoreCase));
                 if (existing != null)
                 {
+                    options.Logger.LogInformation("[{Index}/{Total}] {Name} (already loaded)", openIndex, totalSlnxProjects, projName);
                     projects.Add(existing);
                     continue;
                 }
 
                 try
                 {
+                    options.Logger.LogInformation("[{Index}/{Total}] Opening {Name}...", openIndex, totalSlnxProjects, projName);
                     projects.Add(await workspace.OpenProjectAsync(projectPath));
                 }
                 catch (Exception ex)
                 {
-                    Logger.LogWarning("Failed to open project {ProjectPath}: {Message}", projectPath, ex.Message);
+                    Logger.LogWarning("[{Index}/{Total}] Failed to open {Name}: {Message}", openIndex, totalSlnxProjects, projName, ex.Message);
                 }
             }
         }

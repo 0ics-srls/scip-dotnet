@@ -19,6 +19,9 @@ public static class Program
 
     public static async Task<int> Main(string[] args)
     {
+        // Force unbuffered stdout so log lines appear immediately (critical for Docker/ProcMon)
+        Console.SetOut(new StreamWriter(Console.OpenStandardOutput()) { AutoFlush = true });
+
         var indexCommand = new Command("index", "Index a solution file")
         {
             new Argument<FileInfo>("projects", "Path to the .sln (solution) or .csproj/.vbproj file")

@@ -244,16 +244,24 @@ public class ScipDocumentIndexer
         var info = new SymbolInformation { Symbol = scipSymbol };
         _doc.Symbols.Add(info);
 
-        var symbolSignature = symbol.ToDisplayString(_format);
-        if (symbolSignature.Length > 0)
+        try
         {
-            info.Documentation.Add($"```{_markdownCodeFenceLanguage}\n{symbolSignature}\n```");
-        }
+            var symbolSignature = symbol.ToDisplayString(_format);
+            if (symbolSignature.Length > 0)
+            {
+                info.Documentation.Add($"```{_markdownCodeFenceLanguage}\n{symbolSignature}\n```");
+            }
 
-        var symbolDocumentation = symbol.GetDocumentationCommentXml();
-        if (symbolDocumentation?.Length > 0)
+            var symbolDocumentation = symbol.GetDocumentationCommentXml();
+            if (symbolDocumentation?.Length > 0)
+            {
+                info.Documentation.Add(symbolDocumentation);
+            }
+        }
+        catch (Exception)
         {
-            info.Documentation.Add(symbolDocumentation);
+            // ToDisplayString can crash on complex generic/extension method symbols.
+            // Skip documentation for this symbol — the occurrence and SymbolInformation are already emitted.
         }
 
         switch (symbol)

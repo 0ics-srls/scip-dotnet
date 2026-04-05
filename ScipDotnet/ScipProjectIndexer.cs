@@ -20,7 +20,9 @@ public class ScipProjectIndexer
 
     private void Restore(IndexCommandOptions options, FileInfo project)
     {
-        var arguments = project.Extension.Equals(".sln") ? $"restore {project.FullName} /p:EnableWindowsTargeting=true" : "restore /p:EnableWindowsTargeting=true";
+        var isSolution = project.Extension.Equals(".sln", StringComparison.OrdinalIgnoreCase)
+                     || project.Extension.Equals(".slnx", StringComparison.OrdinalIgnoreCase);
+        var arguments = isSolution ? $"restore {project.FullName} /p:EnableWindowsTargeting=true" : "restore /p:EnableWindowsTargeting=true";
         if (options.NugetConfigPath != null)
         {
             arguments += $" --configfile \"{options.NugetConfigPath.FullName}\"";
@@ -64,14 +66,56 @@ public class ScipProjectIndexer
             Restore(options, rootProject);
         }
 
-        var projects = (string.Equals(rootProject.Extension, ".csproj") || string.Equals(rootProject.Extension, ".vbproj")
-            ? new[]
+        List<Project> projects;
+        var workspace = host.Services.GetRequiredService<MSBuildWorkspace>();
+
+        if (string.Equals(rootProject.Extension, ".csproj", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(rootProject.Extension, ".vbproj", StringComparison.OrdinalIgnoreCase))
+        {
+            projects = new List<Project> { await workspace.OpenProjectAsync(rootProject.FullName) };
+        }
+        else if (string.Equals(rootProject.Extension, ".slnx", StringComparison.OrdinalIgnoreCase))
+        {
+            // .slnx is XML — MSBuild SolutionFile doesn't support it yet.
+            // Parse manually and open each project individually.
+            projects = new List<Project>();
+            var slnxDir = rootProject.DirectoryName!;
+            var doc = System.Xml.Linq.XDocument.Load(rootProject.FullName);
+            var projectPaths = doc.Descendants("Project")
+                .Select(e => e.Attribute("Path")?.Value)
+                .Where(p => p != null)
+                .Select(p => Path.GetFullPath(Path.Combine(slnxDir, p!)));
+            foreach (var projectPath in projectPaths)
             {
-                await host.Services.GetRequiredService<MSBuildWorkspace>()
-                    .OpenProjectAsync(rootProject.FullName)
+                if (!File.Exists(projectPath))
+                {
+                    Logger.LogWarning("Project not found: {ProjectPath}", projectPath);
+                    continue;
+                }
+
+                // Check if already loaded as a dependency of a previous project
+                var existing = workspace.CurrentSolution.Projects
+                    .FirstOrDefault(p => string.Equals(p.FilePath, projectPath, StringComparison.OrdinalIgnoreCase));
+                if (existing != null)
+                {
+                    projects.Add(existing);
+                    continue;
+                }
+
+                try
+                {
+                    projects.Add(await workspace.OpenProjectAsync(projectPath));
+                }
+                catch (Exception ex)
+                {
+                    Logger.LogWarning("Failed to open project {ProjectPath}: {Message}", projectPath, ex.Message);
+                }
             }
-            : (await host.Services.GetRequiredService<MSBuildWorkspace>()
-                .OpenSolutionAsync(rootProject.FullName)).Projects).ToList();
+        }
+        else
+        {
+            projects = (await workspace.OpenSolutionAsync(rootProject.FullName)).Projects.ToList();
+        }
 
 
         options.Logger.LogDebug($"Found {projects.Count()} projects");

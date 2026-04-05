@@ -123,6 +123,7 @@ public static class IndexCommandHandler
     {
         var paths = Directory.GetFiles(workingDirectory.FullName).Where(file =>
             string.Equals(Path.GetExtension(file), ".sln", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(Path.GetExtension(file), ".slnx", StringComparison.OrdinalIgnoreCase) ||
             string.Equals(Path.GetExtension(file), ".csproj", StringComparison.OrdinalIgnoreCase) ||
             string.Equals(Path.GetExtension(file), ".vbproj", StringComparison.OrdinalIgnoreCase)
         ).ToList();

@@ -110,7 +110,12 @@ public static class IndexCommandHandler
             options.Logger.LogWarning("Indexing finished without error but no documents were indexed.");
         }
 
-        await File.WriteAllBytesAsync(options.Output.FullName, index.ToByteArray());
+        // Stream-write instead of ToByteArray() to avoid >2GB contiguous allocation
+        // that trips .NET's managed array size limit on large monorepos (e.g. Uno: 143 projects).
+        await using (var stream = File.Create(options.Output.FullName))
+        {
+            index.WriteTo(stream);
+        }
         options.Logger.LogInformation("done: {OptionsOutput} {TimeElapsed}", options.Output,
             stopwatch.Elapsed.ToFriendlyString());
     }
